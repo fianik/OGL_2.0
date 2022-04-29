@@ -7,8 +7,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <generator/generator.hpp>
-
 #include "rendering/shader_s.h"
 #include "rendering/camera.h"
 
@@ -21,19 +19,18 @@
 
 #include <iostream>
 
-#pragma comment(lib, "generator-glm.lib")
-
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
 bool buttonOnOff(bool button, bool act);
+void changeView(unsigned int& width, unsigned int& height);
 
 unsigned int loadTexture(const char* path);
 
-// Константы
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+// Разрешение экрана
+unsigned int SCR_WIDTH = 800;
+unsigned int SCR_HEIGHT = 600;
 
 // Камера
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
@@ -61,6 +58,10 @@ bool pressPoint2 = false;
 bool pressPoint3 = false;
 bool pressStop = false;
 bool buttonStop = false;
+bool pressTex = true;
+bool pressScr1 = false;
+bool pressScr2 = false;
+bool pressScr3 = false;
 
 int main()
 {
@@ -71,7 +72,7 @@ int main()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     // glfw: создание окна
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "OpenGL for Ravesli.com", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "OpenGL", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -79,7 +80,7 @@ int main()
         return -1;
     }
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(0);
+    //glfwSwapInterval(0);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
@@ -105,8 +106,8 @@ int main()
     // Конфигурирование глобального состояния OpenGL
     glEnable(GL_DEPTH_TEST);
 
-    // Компилирование нашей шейдерной программы
-    Shader lightingShader("../res/shaders/vs_material.txt", "../res/shaders/fs_material.txt");
+    // Компилирование шейдерной программы
+    Shader lightingShader("../res/shaders/vs_material.txt", "../res/shaders/fs_material_notex.txt");
     Shader lightCubeShader("../res/shaders/vs_light.txt", "../res/shaders/fs_light.txt");
 
     // Указание вершин (и буфера(ов)) и настройка вершинных атрибутов
@@ -177,18 +178,6 @@ int main()
         glm::vec3(0.0f,  0.0f, -3.0f)
     };
 
-    // Иницилизация сферы
-    generator::SphereMesh sphere{};
-    auto vertices = sphere.vertices();
-    //float p = count(sphere.vertices());
-    //std::cout << p;
-    float p, n, t;
-    while (!vertices.done()) {
-        generator::MeshVertex vertex = vertices.generate();
-        // Do something with vertex
-        vertices.next();
-    }
-
     // 1. Настраиваем VAO (и VBO) куба
     unsigned int VBO, cubeVAO;
     glGenVertexArrays(1, &cubeVAO);
@@ -233,20 +222,26 @@ int main()
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // Обработка ввода
+        // Проверка на ввод
         processInput(window);
 
-        // Рендеринг
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        // Очистка цветового буфера экрана
+        glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // Проверка изменения окна
+        changeView(SCR_WIDTH, SCR_HEIGHT);
 
         // IMGUI рендер
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // Убеждаемся, что активировали шейдер прежде, чем настраивать uniform-переменные/объекты_рисования
+        // Активация шейдера перед настройкой uniform-переменных/объектов_рисования
         lightingShader.use();
+        //lightingShader.setVec3("objectColor", 1.0f, 0.5f, 0.31f);
+        lightingShader.setBool("texOnOff", pressTex);
+
         lightingShader.setVec3("viewPos", camera.Position);
         lightingShader.setFloat("material.shininess", 32.0f);
 
@@ -259,9 +254,8 @@ int main()
         {
             lightingShader.setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
         };
-        //lightingShader.setVec3("dirLight.ambient", 0.05f, 0.05f, 0.05f);
+
         lightingShader.setVec3("dirLight.ambient", 0.3f, 0.24f, 0.14f);
-        //lightingShader.setVec3("dirLight.diffuse", 0.4f, 0.4f, 0.4f);
         lightingShader.setVec3("dirLight.diffuse", 0.7f, 0.42f, 0.26f);
         lightingShader.setVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
 
@@ -425,22 +419,36 @@ int main()
         ImGui::Text("Press E to display the cursor, R - to hide");
         ImGui::SliderInt("float", &j, 0.0f, 120.0f);
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+       
         pressDirect = buttonOnOff(ImGui::Button("Directional light"), pressDirect);
+
         ImGui::Text("Point light"); ImGui::SameLine();
         pressPoint0 = buttonOnOff(ImGui::Button("#1"), pressPoint0); ImGui::SameLine();
         pressPoint1 = buttonOnOff(ImGui::Button("#2"), pressPoint1); ImGui::SameLine();
         pressPoint2 = buttonOnOff(ImGui::Button("#3"), pressPoint2); ImGui::SameLine();
         pressPoint3 = buttonOnOff(ImGui::Button("#4"), pressPoint3);
+
         pressSpot = buttonOnOff(ImGui::Button("Spot light"), pressSpot);
+        
         buttonStop = ImGui::Button("Stop/Start");
         pressStop = buttonOnOff(buttonStop, pressStop);
+
+        ImGui::Text("Texturing"); ImGui::SameLine();
+        pressTex = buttonOnOff(ImGui::Button("on/off"), pressTex);
+
+        ImGui::Text("Screen"); ImGui::SameLine();
+        pressScr1 = ImGui::Button("800x600"); ImGui::SameLine();
+        pressScr2 = ImGui::Button("1280x1024"); ImGui::SameLine();
+        pressScr3 = ImGui::Button("1920x1080");
+
         ImGui::End();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         std::this_thread::sleep_for(std::chrono::milliseconds(j));
 
-        // glfw: обмен содержимым front- и back- буферов. Отслеживание событий ввода/вывода (была ли нажата/отпущена кнопка, перемещен курсор мыши и т.п.)
+        // glfw: обмен содержимым front- и back- буферов
         glfwSwapBuffers(window);
+        // glfw: отслеживание событий ввода/вывода (перемещение курсора, ввод с клавиатуры и т.п.)
         glfwPollEvents();
     }
 
@@ -452,6 +460,26 @@ int main()
     // glfw: завершение, освобождение всех выделенных ранее GLFW-реcурсов
     glfwTerminate();
     return 0;
+}
+
+// Изменение размеров окна
+void changeView(unsigned int& width, unsigned int& height)
+{
+    if (pressScr1)
+    {
+        width = 800;
+        height = 600;
+    }
+    if (pressScr2)
+    {
+        width = 1240;
+        height = 1024;
+    }
+    if (pressScr3)
+    {
+        width = 1920;
+        height = 1080;
+    }
 }
 
 // Нажатие кнопки выполняет продолжительное действие
@@ -493,7 +521,6 @@ void processInput(GLFWwindow* window)
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
     // Убеждаемся, что окно просмотра соответствует новым размерам окна.
-    // Обратите внимание, ширина и высота будут значительно больше, чем указано, на Retina-дисплеях
     glViewport(0, 0, width, height);
 }
 
